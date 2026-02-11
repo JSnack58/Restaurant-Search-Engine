@@ -1,0 +1,23 @@
+# ── ML core ──────────────────────────────────────────────────────────────────
+torch>=2.1.0
+sentence-transformers>=3.0.0   # SentenceTransformer, contrastive losses, evaluators
+transformers>=4.37.0            # Tokenizers, LR schedulers
+accelerate>=0.26.0              # Device management
+
+# ── Data / ElasticSearch ──────────────────────────────────────────────────────
+elasticsearch>=8.0.0            # ES Python client (PIT, bulk helpers)
+
+# ── Metrics ───────────────────────────────────────────────────────────────────
+scikit-learn>=1.3.0
+numpy>=1.26.0
+
+# ── Logging / experiment tracking ─────────────────────────────────────────────
+tensorboard>=2.15.0
+wandb>=0.16.0                   # optional; set WANDB_PROJECT env var to activate
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+tqdm>=4.66.0
+
+# ── Dev / lint ────────────────────────────────────────────────────────────────
+ruff>=0.2.0
+black>=24.0.0

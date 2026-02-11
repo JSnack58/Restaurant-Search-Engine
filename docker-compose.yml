@@ -1,0 +1,40 @@
+---
+# Self-hosted ElasticSearch 8.x — single-node, local development
+#
+# Usage
+# -----
+#   make es_start     →  docker compose up -d
+#   make es_stop      →  docker compose down
+#   curl http://localhost:9200/_cluster/health   →  verify cluster is green
+#
+# ✏️ PLACEHOLDER — production hardening:
+#   1. Set xpack.security.enabled=true and configure TLS + user passwords.
+#   2. Increase heap size (ES_JAVA_OPTS) to ~50% of available RAM.
+#   3. Add a second node for replication (change number_of_replicas to 1).
+#   4. Mount a host path (not a named volume) for backup-friendly storage.
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    container_name: restaurant_es
+    environment:
+      - discovery.type=single-node
+      # Security disabled for local dev — remove this line for production
+      - xpack.security.enabled=false
+      # ✏️ PLACEHOLDER: tune heap to ~50% of available RAM, e.g. "-Xms4g -Xmx4g"
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  esdata:
+    driver: local
