@@ -23,6 +23,8 @@ import argparse
 import logging
 import os
 from pathlib import Path
+import json
+import tqdm
 
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
@@ -55,6 +57,9 @@ _INDEX_MAPPING = {
             "attributes": {"type": "object", "enabled": False},
             "city": {"type": "keyword"},
             "state": {"type": "keyword"},
+            "address":{"type":"text"},
+            "longitude":{"type":"float"},
+            "latitude":{"type":"float"}
         }
     },
 }
@@ -140,9 +145,40 @@ def stream_and_index(
     ------
     NotImplementedError
     """
-    raise NotImplementedError(
-        "Implement stream_and_index() in scripts/DataHandling/es_ingest_businesses.py"
-    )
+    class Restaurant:
+        def __init__(self, business_id, name, categories, address, city,
+                     state, latitude, longitude, attributes, **_extra):
+            self.business_id = business_id
+            self.name = name
+            self.categories = categories.split(',') if categories else []
+            self.address = address
+            self.city = city
+            self.state = state
+            self.latitude = latitude
+            self.longitude = longitude
+            self.attributes = attributes or {}
+
+    total = 0
+    with (  open(filepath, "r", encoding="utf-8") as file,
+            tqdm(total = len(file)) as progress_bar):
+        chunk = []
+        for line in file:
+            data = json.loads(line)
+            restaurant = Restaurant(**data)
+            chunk.append({
+                "_index": index_name,
+                "_id": restaurant.business_id,
+                "_source": restaurant.__dict__,
+            })
+            if len(chunk) == chunk_size:
+                bulk(es, chunk)
+                total += len(chunk)
+                progress_bar.update(chunk_size)
+                chunk = []
+        if chunk:
+            bulk(es, chunk)
+            total += len(chunk)
+    logger.info("Indexed %d documents into %s", total, index_name)
 
 
 # ---------------------------------------------------------------------------
