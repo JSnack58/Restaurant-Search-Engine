@@ -1,0 +1,37 @@
+# ── Yelp dataset (multi-GB, publicly available — do NOT commit) ───────────
+data/raw/*.json
+data/raw/*.tar
+data/raw/*.gz
+data/raw/yelp_dataset/
+
+# ── Model weights (large binaries — rebuild via `make train`) ─────────────
+models/checkpoints/
+models/embedding_model/
+
+# ── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Virtual environments ─────────────────────────────────────────────────
+.venv/
+venv/
+env/
+
+# ── Experiment tracking ──────────────────────────────────────────────────
+wandb/
+runs/
+*.tfevents*
+
+# ── OS / IDE ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+*.swo
+
+# ── ElasticSearch Docker volume data (if mounted locally) ─────────────────
+esdata/

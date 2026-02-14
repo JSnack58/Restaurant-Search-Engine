@@ -6,7 +6,7 @@
 PYTHON         := python3
 SCRIPTS        := scripts
 DATA_RAW       := data/raw
-BIZ_JSON       := $(DATA_RAW)/yelp_academic_dataset_business.json
+BIZ_JSON       := $(DATA_RAW)/yelp_dataset/yelp_academic_dataset_business.json
 CKPT_DIR       := models/checkpoints
 BEST_MODEL     := $(CKPT_DIR)/best_model
 EMBED_MODEL    := models/embedding_model
