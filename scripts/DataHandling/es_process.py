@@ -119,6 +119,13 @@ def build_business_text(business: dict) -> str:
     """
     return f"""{business["name"]} - {business['categories']} - {business['attributes']} - {business['city']},{business['state']}"""
 
+def _broad_queries(business: dict) -> list[str]:
+    broad_queries = []
+    # Names, Categories, attribute
+    broad_queries.extend([business['name']] + business['categories'])
+    broad_queries.extend([attr for attr in business['attributes'] if business['attributes'][attr] == "True"])
+
+    return broad_queries
 
 
 def generate_queries(business: dict) -> list[str]:
@@ -161,9 +168,10 @@ def generate_queries(business: dict) -> list[str]:
     ------
     NotImplementedError
     """
-    raise NotImplementedError(
-        "Implement generate_queries() in scripts/DataHandling/es_process.py"
-    )
+    queries = []
+    # Vague
+    # Rich vibe description
+    # Rich service description
 
 
 def assign_split(business_id: str) -> str:
