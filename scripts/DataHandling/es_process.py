@@ -26,7 +26,8 @@ import random
 from pathlib import Path
 
 from elasticsearch import Elasticsearch
-from elasticsearch.helpers import bulk
+# USer scan to stream results of the restaurant search.
+from elasticsearch.helpers import bulk, scan
 from tqdm import tqdm
 
 logging.basicConfig(
@@ -116,9 +117,8 @@ def build_business_text(business: dict) -> str:
     ------
     NotImplementedError
     """
-    raise NotImplementedError(
-        "Implement build_business_text() in scripts/DataHandling/es_process.py"
-    )
+    return f"""{business["name"]} - {business['categories']} - {business['attributes']} - {business['city']},{business['state']}"""
+
 
 
 def generate_queries(business: dict) -> list[str]:
