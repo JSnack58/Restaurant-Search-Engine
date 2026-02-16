@@ -17,6 +17,7 @@ wandb>=0.16.0                   # optional; set WANDB_PROJECT env var to activat
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 tqdm>=4.66.0
+fpdf2>=2.7.0                    # PDF generation for data profiling
 
 # ── Dev / lint ────────────────────────────────────────────────────────────────
 ruff>=0.2.0
