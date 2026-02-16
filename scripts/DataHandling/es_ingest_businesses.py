@@ -24,7 +24,7 @@ import logging
 import os
 from pathlib import Path
 import json
-import tqdm
+from tqdm import tqdm
 
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
@@ -159,10 +159,9 @@ def stream_and_index(
             self.attributes = attributes or {}
 
     total = 0
-    with (  open(filepath, "r", encoding="utf-8") as file,
-            tqdm(total = len(file)) as progress_bar):
+    with (  open(filepath, "r", encoding="utf-8") as file):
         chunk = []
-        for line in file:
+        for line in tqdm(file,desc="Indexing"):
             data = json.loads(line)
             restaurant = Restaurant(**data)
             chunk.append({
@@ -173,7 +172,6 @@ def stream_and_index(
             if len(chunk) == chunk_size:
                 bulk(es, chunk)
                 total += len(chunk)
-                progress_bar.update(chunk_size)
                 chunk = []
         if chunk:
             bulk(es, chunk)
