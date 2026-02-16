@@ -51,7 +51,7 @@ _INDEX_MAPPING = {
         "properties": {
             "business_id": {"type": "keyword"},
             "name": {"type": "text"},
-            "categories": {"type": "text"},
+            "categories": {"type": "keyword"},
             # Store the raw attributes object without indexing every sub-field.
             # es_process.py accesses them at processing time.
             "attributes": {"type": "object", "enabled": False},
