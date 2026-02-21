@@ -20,15 +20,20 @@ Usage
 from __future__ import annotations
 
 import argparse
+from collections import defaultdict
 import logging
 import os
 import random
 from pathlib import Path
+import string
 
 from elasticsearch import Elasticsearch
 # USer scan to stream results of the restaurant search.
 from elasticsearch.helpers import bulk, scan
 from tqdm import tqdm
+from business_dto import BusinessDTO
+from templates import TEMPLATES
+import hashlib
 
 logging.basicConfig(
     level=logging.INFO,
@@ -50,6 +55,7 @@ _TRAINING_INDEX_MAPPING = {
     "mappings": {
         "properties": {
             "query": {"type": "text"},
+            "query_tier": {"type": "keyword"},
             "business_text": {"type": "text"},
             "business_id": {"type": "keyword"},
             # "train" | "val" | "test"  — used to filter in ElasticSearchDataset
@@ -60,6 +66,27 @@ _TRAINING_INDEX_MAPPING = {
     },
 }
 
+_SLOT_SOURCES = {
+    "cat":      lambda dto: list(dto.categories),
+    "phrase":   lambda dto: list(dto.phrases),
+    "city":     lambda dto: [dto.city],
+    "state":    lambda dto: [dto.state],
+    "location": lambda dto: [dto.location],
+    "name":     lambda dto: [dto.name],
+    "amb":   lambda dto: list(dto.nested_attrs.get("Ambience", frozenset())),
+    "price": lambda dto: {
+        "1": ["cheap", "affordable", "budget"],
+        "2": ["moderate", "fairly priced"],
+        "3": ["expensive", "upscale"],
+        "4": ["luxury", "high-end", "fancy"],
+    }.get(dto.enum_attrs.get("RestaurantsPriceRange2", "2"), ["moderate"]),
+    "noise": lambda dto: {
+        "None":    ["silent"],
+        "quiet":   ["quiet"],
+        "average": ["normal sounding"],
+        "loud":    ["loud"],
+    }.get(dto.enum_attrs.get("NoiseLevel", "average"), ["normal sounding"]),
+}
 
 # ---------------------------------------------------------------------------
 # ES client factory (mirrors es_ingest_businesses.py)
@@ -85,93 +112,70 @@ def create_training_index(es: Elasticsearch, index_name: str) -> None:
 # ✏️  TEAM STUBS — implement the three functions below
 # ---------------------------------------------------------------------------
 
-def build_business_text(business: dict) -> str:
-    """
-    ✏️ PLACEHOLDER — Compose a single natural-language text string that
-    describes the business.  This text becomes the "document" side of each
-    contrastive training pair.
+def build_business_text(dto: BusinessDTO) -> str:
+    """Compose a natural-language description of the business.
 
-    The string should capture the key signals a user query might match:
-    name, cuisine/category, relevant attributes, and location.
+    This text becomes the "document" side of each contrastive training pair.
 
-    Example outputs
-    ---------------
-    "Bella Italia — Italian, Pizza, Dine-In — romantic atmosphere,
+    Example output
+    --------------
+    "Bella Italia — Italian, Pizza — romantic atmosphere,
      accepts reservations — Seattle, WA"
+    """
+    parts = [dto.name]
+    if dto.categories:
+        parts.append(", ".join(dto.categories))
+    if dto.phrases:
+        parts.append(", ".join(dto.phrases))
+    parts.append(dto.location)
+    return " — ".join(parts)
 
-    "Joe's Burger Joint — Fast Food, Burgers, American — casual,
-     takeout available, kid-friendly — Los Angeles, CA"
+    
+def _apply_templates(dto: BusinessDTO, templates: dict[str, list[str]]) -> dict[str, list[str]]:
+    results: dict[str, list[str]] = {}
+    formatter = string.Formatter()
 
-    Parameters
-    ----------
-    business : dict
-        A single document from yelp_businesses_raw (_source).
-        Relevant keys: name, categories, attributes, city, state.
+    for tier_name, tier_templates in templates.items():
+        tier_queries = []
+        for template in tier_templates:
+            fields = {fname for _, fname, _, _ in formatter.parse(template) if fname}
+            pools = {
+                prefix: list(source(dto)) for prefix, source in _SLOT_SOURCES.items()
+            }
+            resolved: dict[str, str] = {}
+            skip = False
+
+            for field in fields:
+                if field in resolved:
+                    continue
+                prefix = next((p for p in _SLOT_SOURCES if field == p or field.startswith(p)), None)
+                if prefix is None or not pools[prefix]:
+                    skip = True
+                    break
+                val = random.choice(pools[prefix])
+                pools[prefix].remove(val)
+                resolved[field] = val
+
+            if not skip:
+                tier_queries.append(template.format_map(defaultdict(str, resolved)))
+
+        if tier_queries:
+            results[tier_name] = tier_queries
+
+    return results
+
+            
+
+
+def generate_queries(dto: BusinessDTO) -> dict[str, list[str]]:
+    """Return synthetic user queries grouped by template tier.
 
     Returns
     -------
-    str
-        A natural-language description of the business.
-
-    Raises
-    ------
-    NotImplementedError
+    dict[str, list[str]]
+        Tier name → list of generated queries for that tier.
     """
-    return f"""{business["name"]} - {business['categories']} - {business['attributes']} - {business['city']},{business['state']}"""
-
-def _broad_queries(business: dict) -> list[str]:
-    broad_queries = []
-    # Names, Categories, attribute
-    broad_queries.extend([business['name']] + business['categories'])
-    broad_queries.extend([attr for attr in business['attributes'] if business['attributes'][attr] == "True"])
-
-    return broad_queries
-
-
-def generate_queries(business: dict) -> list[str]:
-    """
-    ✏️ PLACEHOLDER — Return a list of synthetic user queries for this business.
-
-    Queries should be phrased as a user would type them into a restaurant
-    search engine, for example:
-        "I'm looking for authentic Italian pasta"
-        "romantic restaurant in Seattle"
-        "cheap family-friendly burgers near me"
-        "where can I get good pizza for takeout?"
-
-    Strategy options (team decides)
-    ---------------------------------
-    A) Template-based:
-       Map category/attribute combinations to query slot-fill templates.
-       E.g., if categories contains "Italian" and attributes["Ambience"]["romantic"]:
-           queries.append("romantic Italian restaurant")
-
-    B) LLM-assisted:
-       Call an API (OpenAI, Anthropic Claude, etc.) with the business details
-       and ask it to generate N realistic user queries.
-
-    C) Rule-based expansion:
-       Define attribute → query phrase dictionaries and combine them.
-
-    Parameters
-    ----------
-    business : dict
-        A single document from yelp_businesses_raw (_source).
-
-    Returns
-    -------
-    list[str]
-        One or more natural-language queries relevant to this business.
-        Returning multiple queries per business multiplies training data size.
-
-    Raises
-    ------
-    NotImplementedError
-    """
-    queries = []
-    # Vague
-    # Rich vibe description
-    # Rich service description
+    return _apply_templates(dto, TEMPLATES)
 
 
 def assign_split(business_id: str) -> str:
@@ -207,10 +211,13 @@ def assign_split(business_id: str) -> str:
     ------
     NotImplementedError
     """
-    raise NotImplementedError(
-        "Implement assign_split() in scripts/DataHandling/es_process.py"
-    )
-
+    h = int(hashlib.md5(business_id.encode()).hexdigest(), 16) % 100
+    if h < 80:
+        return "train"
+    elif h < 90:
+        return "val"
+    else:
+        return "test"
 
 # ---------------------------------------------------------------------------
 # Main processing loop (glue — complete)
@@ -257,26 +264,27 @@ def process_businesses(
 
                 actions: list[dict] = []
                 for hit in hits:
-                    business = hit["_source"]
-                    biz_id: str = business.get("business_id", hit["_id"])
+                    dto = BusinessDTO.from_raw(hit["_source"])
 
-                    biz_text = build_business_text(business)
-                    queries = generate_queries(business)
-                    split = assign_split(biz_id)
+                    biz_text = build_business_text(dto)
+                    tier_queries = generate_queries(dto)
+                    split = assign_split(dto.business_id)
 
-                    for query in queries:
-                        actions.append(
-                            {
-                                "_index": target_index,
-                                "_source": {
-                                    "query": query,
-                                    "business_text": biz_text,
-                                    "business_id": biz_id,
-                                    "split": split,
-                                    "shuffle_id": random.randint(0, 999_999),
-                                },
-                            }
-                        )
+                    for tier_name, queries in tier_queries.items():
+                        for query in queries:
+                            actions.append(
+                                {
+                                    "_index": target_index,
+                                    "_source": {
+                                        "query": query,
+                                        "query_tier": tier_name,
+                                        "business_text": biz_text,
+                                        "business_id": dto.business_id,
+                                        "split": split,
+                                        "shuffle_id": random.randint(0, 999_999),
+                                    },
+                                }
+                            )
 
                 if actions:
                     bulk(es, actions)
