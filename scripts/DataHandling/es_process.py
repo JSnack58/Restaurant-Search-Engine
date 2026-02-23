@@ -265,6 +265,8 @@ def process_businesses(
                 actions: list[dict] = []
                 for hit in hits:
                     dto = BusinessDTO.from_raw(hit["_source"])
+                    if not dto.categories:
+                        continue
 
                     biz_text = build_business_text(dto)
                     tier_queries = generate_queries(dto)
