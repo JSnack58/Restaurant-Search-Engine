@@ -29,6 +29,8 @@ from sentence_transformers import SentenceTransformer
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from torch.nn import CrossEntropyLoss
+from torch.nn.functional import F
 from transformers import get_linear_schedule_with_warmup
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -66,10 +68,15 @@ def compute_mnrl_loss(
     Raises
     ------
     NotImplementedError
-    """
+    
     raise NotImplementedError(
         "Implement compute_mnrl_loss() in scripts/Finetuning/train_contrastive.py"
     )
+    """
+    similarity = F.cosine_similarity(queries_emb, businesses_emb)
+    ideal = torch.eye(similarity.shape[0], similarity.shape[1])
+    criterion = CrossEntropyLoss()
+    return criterion(similarity, ideal)
 
 
 def compute_triplet_loss(
