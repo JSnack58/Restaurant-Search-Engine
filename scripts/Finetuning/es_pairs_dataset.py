@@ -51,6 +51,7 @@ class ESPairsDataset(IterableDataset):
         es_batch_size: int = 256,
         shuffle_buffer: int = 5_000,
         pit_keep_alive: str = "2m",
+        max_samples: int | None = None,
     ) -> None:
         if mode not in {"mnrl", "triplet"}:
             raise ValueError(f"mode must be 'mnrl' or 'triplet', got '{mode!r}'")
@@ -62,6 +63,7 @@ class ESPairsDataset(IterableDataset):
             es_batch_size=es_batch_size,
             shuffle_buffer=shuffle_buffer,
             pit_keep_alive=pit_keep_alive,
+            max_samples=max_samples,
         )
         self.mode = mode
         self.shuffle_buffer = shuffle_buffer

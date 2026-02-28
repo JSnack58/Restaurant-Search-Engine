@@ -31,6 +31,10 @@ class ESConfig:
     # In-memory shuffle buffer size inside ElasticSearchDataset
     shuffle_buffer: int = 5_000
 
+    # Cap the number of samples streamed per epoch (None = all)
+    max_samples: int | None = 100_000
+    max_val_samples: int | None = 10_000
+
     # How long to keep the Point-in-Time context alive between requests
     pit_keep_alive: str = "2m"
 
@@ -58,8 +62,10 @@ class TrainingConfig:
     weight_decay: float = 0.01
     warmup_ratio: float = 0.06      # fraction of total steps used for linear warm-up
 
-    # Set False to use a fixed LR (useful for debugging the loss function)
-    use_lr_schedule: bool = False
+    # Set True to enable ReduceLROnPlateau (drops LR when val_loss stalls)
+    use_lr_schedule: bool = True
+    lr_reduce_factor: float = 0.5   # multiply LR by this when plateau is hit
+    lr_reduce_patience: int = 1     # epochs with no improvement before reducing
 
     # ── Early stopping ─────────────────────────────────────────────────────
     early_stopping_patience: int = 2

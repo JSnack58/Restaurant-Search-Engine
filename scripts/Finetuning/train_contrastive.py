@@ -29,10 +29,9 @@ from elasticsearch import Elasticsearch
 from sentence_transformers import SentenceTransformer
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
+from tensorboardX import SummaryWriter
 from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
-from transformers import get_linear_schedule_with_warmup
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scripts.Finetuning.config import ESConfig, ModelConfig, TrainingConfig
@@ -171,6 +170,7 @@ def train(
         mode=loss_type,
         es_batch_size=es_cfg.es_batch_size,
         shuffle_buffer=es_cfg.shuffle_buffer,
+        max_samples=es_cfg.max_samples,
     )
     val_dataset = ESPairsDataset(
         es_host=es_cfg.host,
@@ -179,6 +179,7 @@ def train(
         mode=loss_type,
         es_batch_size=es_cfg.es_batch_size,
         shuffle_buffer=1_000,
+        max_samples=es_cfg.max_val_samples,
     )
 
     def _collate(batch):
@@ -204,20 +205,21 @@ def train(
         weight_decay=train_cfg.weight_decay,
     )
 
-    train_count = es.count(index=es_cfg.training_pairs_index, query={"term": {"split": "train"}})["count"]
+    train_count = es_cfg.max_samples or es.count(index=es_cfg.training_pairs_index, query={"term": {"split": "train"}})["count"]
     steps_per_epoch = train_count // train_cfg.per_device_train_batch_size
     total_steps = steps_per_epoch * train_cfg.num_train_epochs
     warmup_steps = int(total_steps * train_cfg.warmup_ratio)
     logger.info("total_steps=%d  warmup_steps=%d  steps_per_epoch=%d", total_steps, warmup_steps, steps_per_epoch)
 
     if train_cfg.use_lr_schedule:
-        scheduler = get_linear_schedule_with_warmup(
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
-            num_warmup_steps=warmup_steps,
-            num_training_steps=total_steps,
+            mode="min",
+            factor=train_cfg.lr_reduce_factor,
+            patience=train_cfg.lr_reduce_patience,
         )
     else:
-        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda _: 1.0)
+        scheduler = None
 
     scaler = (
         torch.cuda.amp.GradScaler()
@@ -264,14 +266,13 @@ def train(
                 loss.backward()
                 optimizer.step()
 
-            scheduler.step()
             epoch_loss += loss.item()
             epoch_steps += 1
             global_step += 1
 
             if step % train_cfg.logging_steps == 0:
                 avg = epoch_loss / epoch_steps
-                lr_now = scheduler.get_last_lr()[0]
+                lr_now = optimizer.param_groups[0]["lr"]
                 logger.info(
                     "Epoch %d | step %d | train_loss=%.4f | lr=%.2e",
                     epoch, step, avg, lr_now,
@@ -293,6 +294,12 @@ def train(
 
         avg_val = val_loss_sum / max(val_steps, 1)
         logger.info("Epoch %d | val_loss=%.4f", epoch, avg_val)
+        if scheduler:
+            lr_before = optimizer.param_groups[0]["lr"]
+            scheduler.step(avg_val)
+            lr_after = optimizer.param_groups[0]["lr"]
+            if lr_after < lr_before:
+                logger.info("ReduceLROnPlateau fired: lr %.2e → %.2e", lr_before, lr_after)
         if tb_writer:
             tb_writer.add_scalar("val/loss", avg_val, epoch)
         # ✏️ PLACEHOLDER: wandb.log({"val/loss": avg_val})

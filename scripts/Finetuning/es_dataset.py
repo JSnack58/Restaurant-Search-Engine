@@ -62,6 +62,7 @@ class ElasticSearchDataset(IterableDataset):
         es_batch_size: int = 256,
         shuffle_buffer: int = 5_000,
         pit_keep_alive: str = "2m",
+        max_samples: int | None = None,
     ) -> None:
         self.es = Elasticsearch(
             es_host
@@ -72,6 +73,7 @@ class ElasticSearchDataset(IterableDataset):
         self.es_batch_size = es_batch_size
         self.shuffle_buffer = shuffle_buffer
         self.pit_keep_alive = pit_keep_alive
+        self.max_samples = max_samples
 
     # ------------------------------------------------------------------
     # Internal: PIT streaming loop
@@ -137,14 +139,23 @@ class ElasticSearchDataset(IterableDataset):
             }
         """
         buffer: list[dict] = []
+        total_yielded = 0
 
         for doc in self._stream_docs():
             buffer.append(doc)
             if len(buffer) >= self.shuffle_buffer:
                 random.shuffle(buffer)
-                yield from buffer
+                for item in buffer:
+                    yield item
+                    total_yielded += 1
+                    if self.max_samples and total_yielded >= self.max_samples:
+                        return
                 buffer = []
 
         if buffer:
             random.shuffle(buffer)
-            yield from buffer
+            for item in buffer:
+                yield item
+                total_yielded += 1
+                if self.max_samples and total_yielded >= self.max_samples:
+                    return
