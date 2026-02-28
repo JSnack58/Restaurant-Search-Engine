@@ -25,12 +25,13 @@ import sys
 from pathlib import Path
 
 import torch
+from elasticsearch import Elasticsearch
 from sentence_transformers import SentenceTransformer
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torch.nn import CrossEntropyLoss
-from torch.nn.functional import F
+from torch.nn import functional as F
 from transformers import get_linear_schedule_with_warmup
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -73,10 +74,13 @@ def compute_mnrl_loss(
         "Implement compute_mnrl_loss() in scripts/Finetuning/train_contrastive.py"
     )
     """
-    similarity = F.cosine_similarity(queries_emb, businesses_emb)
-    ideal = torch.eye(similarity.shape[0], similarity.shape[1])
+    
+    queries_norm = F.normalize(queries_emb, dim=-1)
+    businesses_norm = F.normalize(businesses_emb, dim=-1)
+    similarity = queries_norm @ businesses_norm.T
+    labels = torch.arange(similarity.shape[0],device=queries_emb.device)
     criterion = CrossEntropyLoss()
-    return criterion(similarity, ideal)
+    return criterion(similarity, labels)
 
 
 def compute_triplet_loss(
@@ -151,6 +155,9 @@ def train(
     #   import wandb
     #   wandb.init(project=os.getenv("WANDB_PROJECT"), name=train_cfg.run_name)
 
+    # ── ES client (for step count) ────────────────────────────────────────
+    es = Elasticsearch(es_cfg.host)
+
     # ── Model ────────────────────────────────────────────────────────────
     logger.info("Loading model: %s", model_cfg.pretrained_model_name)
     model = SentenceTransformer(model_cfg.pretrained_model_name)
@@ -197,17 +204,20 @@ def train(
         weight_decay=train_cfg.weight_decay,
     )
 
-    # ✏️ PLACEHOLDER: replace the estimated steps_per_epoch with the exact
-    # value once you know the training set size: total_pairs / batch_size.
-    _STEPS_PER_EPOCH_ESTIMATE = 1_000
-    total_steps = _STEPS_PER_EPOCH_ESTIMATE * train_cfg.num_train_epochs
+    train_count = es.count(index=es_cfg.training_pairs_index, query={"term": {"split": "train"}})["count"]
+    steps_per_epoch = train_count // train_cfg.per_device_train_batch_size
+    total_steps = steps_per_epoch * train_cfg.num_train_epochs
     warmup_steps = int(total_steps * train_cfg.warmup_ratio)
+    logger.info("total_steps=%d  warmup_steps=%d  steps_per_epoch=%d", total_steps, warmup_steps, steps_per_epoch)
 
-    scheduler = get_linear_schedule_with_warmup(
-        optimizer,
-        num_warmup_steps=warmup_steps,
-        num_training_steps=total_steps,
-    )
+    if train_cfg.use_lr_schedule:
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=warmup_steps,
+            num_training_steps=total_steps,
+        )
+    else:
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda _: 1.0)
 
     scaler = (
         torch.cuda.amp.GradScaler()

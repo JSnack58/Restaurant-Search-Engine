@@ -58,6 +58,9 @@ class TrainingConfig:
     weight_decay: float = 0.01
     warmup_ratio: float = 0.06      # fraction of total steps used for linear warm-up
 
+    # Set False to use a fixed LR (useful for debugging the loss function)
+    use_lr_schedule: bool = False
+
     # ── Early stopping ─────────────────────────────────────────────────────
     early_stopping_patience: int = 2
 
