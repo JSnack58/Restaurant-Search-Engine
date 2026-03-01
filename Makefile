@@ -10,6 +10,7 @@ BIZ_JSON       := $(DATA_RAW)/yelp_dataset/yelp_academic_dataset_business.json
 CKPT_DIR       := models/checkpoints
 BEST_MODEL     := $(CKPT_DIR)/best_model
 EMBED_MODEL    := models/embedding_model
+KNN_INDEX      := yelp_businesses_knn
 
 # ── Tuneable defaults (override on CLI: make train EPOCHS=5) ──────────────
 EPOCHS         := 3
@@ -26,6 +27,7 @@ EVAL_SPLIT     := val
         es_start es_stop \
         ingest_raw process_data \
         train evaluate export \
+        index_embeddings search \
         lint format
 
 # ── help ──────────────────────────────────────────────────────────────────
@@ -39,6 +41,8 @@ help:
 	@printf "  make train           Contrastive fine-tuning  [LOSS_TYPE=mnrl|triplet]\n"
 	@printf "  make evaluate        Embedding quality metrics [EVAL_SPLIT=val|test]\n"
 	@printf "  make export          Save embedding model      [POOLING=cls|mean]\n"
+	@printf "  make index_embeddings  Embed all businesses → ES kNN index\n"
+	@printf "  make search            Interactive kNN search REPL\n"
 	@printf "  make lint            Lint scripts/ (ruff + black --check)\n"
 	@printf "  make format          Auto-format scripts/ in place\n\n"
 	@printf "  Tuneable vars: EPOCHS  BATCH_SIZE  LOSS_TYPE  POOLING  REPORT_TO\n"
@@ -98,6 +102,18 @@ export: _require_best_model
 	    --output_dir       $(EMBED_MODEL) \
 	    --pooling_strategy $(POOLING)
 
+# ── kNN indexing & search ─────────────────────────────────────────────────
+index_embeddings: _require_embed_model
+	$(PYTHON) $(SCRIPTS)/DataHandling/es_index_embeddings.py \
+	    --model_path $(EMBED_MODEL)/sentence_transformer \
+	    --knn_index  $(KNN_INDEX) \
+	    --es_host    $(ES_HOST)
+
+search:
+	$(PYTHON) $(SCRIPTS)/search.py \
+	    --knn_index $(KNN_INDEX) \
+	    --es_host   $(ES_HOST)
+
 # ── Lint & format ──────────────────────────────────────────────────────────
 lint:
 	$(PYTHON) -m ruff check $(SCRIPTS)/
@@ -133,5 +149,12 @@ _require_best_model:
 	@test -d "$(BEST_MODEL)" || { \
 	    printf "\nERROR: Best model not found at $(BEST_MODEL)\n"; \
 	    printf "Run: make train\n\n"; \
+	    exit 1; \
+	}
+
+_require_embed_model:
+	@test -d "$(EMBED_MODEL)/sentence_transformer" || { \
+	    printf "\nERROR: Embedding model not found at $(EMBED_MODEL)/sentence_transformer\n"; \
+	    printf "Run: make export\n\n"; \
 	    exit 1; \
 	}
