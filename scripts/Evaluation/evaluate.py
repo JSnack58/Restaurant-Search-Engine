@@ -160,8 +160,9 @@ def evaluate(
         show_progress_bar=True,
     )
     sim_score = sim_evaluator(model, output_path=str(output_dir))
-    results["similarity_spearman"] = sim_score
-    logger.info("EmbeddingSimilarity (Spearman): %.4f", sim_score)
+    spearman = sim_score.get(f"{split}_similarity_spearman_cosine", next(iter(sim_score.values())))
+    results["similarity_spearman"] = spearman
+    logger.info("EmbeddingSimilarity (Spearman): %.4f", spearman)
 
     # ── Triplet evaluator ─────────────────────────────────────────────────
     logger.info("Building triplets…")
@@ -175,8 +176,9 @@ def evaluate(
         show_progress_bar=True,
     )
     triplet_acc = triplet_evaluator(model, output_path=str(output_dir))
-    results["triplet_accuracy"] = triplet_acc
-    logger.info("TripletEvaluator accuracy: %.4f", triplet_acc)
+    accuracy = triplet_acc.get(f"{split}_triplets_cosine_accuracy", next(iter(triplet_acc.values())))
+    results["triplet_accuracy"] = accuracy
+    logger.info("TripletEvaluator accuracy: %.4f", accuracy)
 
     # ✏️ PLACEHOLDER — downstream retrieval metrics:
     # Once you have a held-out query set and a business corpus, compute:
