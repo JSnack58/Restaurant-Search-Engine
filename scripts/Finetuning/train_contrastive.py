@@ -86,7 +86,7 @@ def compute_triplet_loss(
     anchor_emb: torch.Tensor,
     positive_emb: torch.Tensor,
     negative_emb: torch.Tensor,
-    margin: float = 0.5,
+    margin: float = 0.2,
 ) -> torch.Tensor:
     """
     ✏️ PLACEHOLDER — Implement Triplet Loss with margin.
@@ -107,9 +107,12 @@ def compute_triplet_loss(
     ------
     NotImplementedError
     """
-    raise NotImplementedError(
-        "Implement compute_triplet_loss() in scripts/Finetuning/train_contrastive.py"
-    )
+    anchor_norm   = F.normalize(anchor_emb,   dim=-1)
+    positive_norm = F.normalize(positive_emb, dim=-1)
+    negative_norm = F.normalize(negative_emb, dim=-1)
+    anchor_positive_sim = (anchor_norm * positive_norm).sum(dim=-1)  # (B,)
+    anchor_negative_sim = (anchor_norm * negative_norm).sum(dim=-1)  # (B,)
+    return F.relu(anchor_negative_sim - anchor_positive_sim + margin).mean()
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +141,7 @@ def train(
     model_cfg: ModelConfig,
     train_cfg: TrainingConfig,
     loss_type: str,
+    resume_from: str | None = None,
 ) -> None:
     torch.manual_seed(train_cfg.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -158,8 +162,9 @@ def train(
     es = Elasticsearch(es_cfg.host)
 
     # ── Model ────────────────────────────────────────────────────────────
-    logger.info("Loading model: %s", model_cfg.pretrained_model_name)
-    model = SentenceTransformer(model_cfg.pretrained_model_name)
+    model_source = resume_from or model_cfg.pretrained_model_name
+    logger.info("Loading model: %s", model_source)
+    model = SentenceTransformer(model_source)
     model.to(device)
 
     # ── Datasets & DataLoaders ───────────────────────────────────────────
@@ -346,7 +351,8 @@ def _parse_args() -> argparse.Namespace:
         choices=["mnrl", "triplet"],
         default="mnrl",
     )
-    p.add_argument("--model_dir",  type=Path,  help="Override checkpoint output dir")
+    p.add_argument("--model_dir",    type=Path, help="Override checkpoint output dir")
+    p.add_argument("--resume_from",  type=str,  help="Path to a saved SentenceTransformer to continue training (e.g. models/checkpoints/best_model)")
     p.add_argument("--num_epochs", type=int)
     p.add_argument("--batch_size", type=int)
     p.add_argument("--lr",         type=float)
@@ -373,4 +379,4 @@ if __name__ == "__main__":
     if args.fp16:       train_cfg.fp16 = True
     if args.report_to:  train_cfg.report_to = args.report_to
 
-    train(es_cfg, model_cfg, train_cfg, loss_type=args.loss_type)
+    train(es_cfg, model_cfg, train_cfg, loss_type=args.loss_type, resume_from=args.resume_from)

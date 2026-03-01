@@ -69,6 +69,8 @@ class TrainingConfig:
 
     # ── Early stopping ─────────────────────────────────────────────────────
     early_stopping_patience: int = 2
+    # Stop early if either train or val loss drops below this threshold (None = disabled)
+    early_stopping_threshold: float | None = 0.1
 
     # ── Hardware ──────────────────────────────────────────────────────────
     # ✏️ PLACEHOLDER: set fp16=True for GPUs with Tensor Cores (Volta+).
